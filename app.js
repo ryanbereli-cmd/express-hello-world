@@ -1,61 +1,123 @@
-const express = require("express");
+// Twitter API Proxy Server for X Feed Analyzer
+// Deploy this on Render.com (free tier)
+
+const express = require('express');
+const cors = require('cors');
+const fetch = require('node-fetch');
+
 const app = express();
-const port = process.env.PORT || 3001;
+const PORT = process.env.PORT || 3000;
 
-app.get("/", (req, res) => res.type('html').send(html));
+// Enable CORS for all origins (you can restrict this to claude.ai if needed)
+app.use(cors());
+app.use(express.json());
 
-const server = app.listen(port, () => console.log(`Example app listening on port ${port}!`));
+// Health check endpoint
+app.get('/', (req, res) => {
+  res.json({ 
+    status: 'ok', 
+    message: 'Twitter API Proxy Server is running',
+    endpoints: [
+      'GET /api/user/me',
+      'GET /api/user/lists',
+      'GET /api/list/tweets/:listId'
+    ]
+  });
+});
 
-server.keepAliveTimeout = 120 * 1000;
-server.headersTimeout = 120 * 1000;
+// Get authenticated user info
+app.get('/api/user/me', async (req, res) => {
+  try {
+    const bearerToken = req.headers.authorization;
+    
+    if (!bearerToken) {
+      return res.status(401).json({ error: 'No authorization token provided' });
+    }
 
-const html = `
-<!DOCTYPE html>
-<html>
-  <head>
-    <title>Hello from Render!</title>
-    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.5.1/dist/confetti.browser.min.js"></script>
-    <script>
-      setTimeout(() => {
-        confetti({
-          particleCount: 100,
-          spread: 70,
-          origin: { y: 0.6 },
-          disableForReducedMotion: true
-        });
-      }, 500);
-    </script>
-    <style>
-      @import url("https://p.typekit.net/p.css?s=1&k=vnd5zic&ht=tk&f=39475.39476.39477.39478.39479.39480.39481.39482&a=18673890&app=typekit&e=css");
-      @font-face {
-        font-family: "neo-sans";
-        src: url("https://use.typekit.net/af/00ac0a/00000000000000003b9b2033/27/l?primer=7cdcb44be4a7db8877ffa5c0007b8dd865b3bbc383831fe2ea177f62257a9191&fvd=n7&v=3") format("woff2"), url("https://use.typekit.net/af/00ac0a/00000000000000003b9b2033/27/d?primer=7cdcb44be4a7db8877ffa5c0007b8dd865b3bbc383831fe2ea177f62257a9191&fvd=n7&v=3") format("woff"), url("https://use.typekit.net/af/00ac0a/00000000000000003b9b2033/27/a?primer=7cdcb44be4a7db8877ffa5c0007b8dd865b3bbc383831fe2ea177f62257a9191&fvd=n7&v=3") format("opentype");
-        font-style: normal;
-        font-weight: 700;
+    const response = await fetch('https://api.twitter.com/2/users/me', {
+      headers: {
+        'Authorization': bearerToken
       }
-      html {
-        font-family: neo-sans;
-        font-weight: 700;
-        font-size: calc(62rem / 16);
+    });
+
+    const data = await response.json();
+    
+    if (!response.ok) {
+      return res.status(response.status).json(data);
+    }
+
+    res.json(data);
+  } catch (error) {
+    console.error('Error in /api/user/me:', error);
+    res.status(500).json({ error: 'Internal server error', details: error.message });
+  }
+});
+
+// Get user's lists
+app.get('/api/user/lists', async (req, res) => {
+  try {
+    const bearerToken = req.headers.authorization;
+    const userId = req.query.userId;
+    
+    if (!bearerToken) {
+      return res.status(401).json({ error: 'No authorization token provided' });
+    }
+
+    if (!userId) {
+      return res.status(400).json({ error: 'userId query parameter required' });
+    }
+
+    const response = await fetch(`https://api.twitter.com/2/users/${userId}/owned_lists`, {
+      headers: {
+        'Authorization': bearerToken
       }
-      body {
-        background: white;
+    });
+
+    const data = await response.json();
+    
+    if (!response.ok) {
+      return res.status(response.status).json(data);
+    }
+
+    res.json(data);
+  } catch (error) {
+    console.error('Error in /api/user/lists:', error);
+    res.status(500).json({ error: 'Internal server error', details: error.message });
+  }
+});
+
+// Get tweets from a list
+app.get('/api/list/tweets/:listId', async (req, res) => {
+  try {
+    const bearerToken = req.headers.authorization;
+    const { listId } = req.params;
+    const maxResults = req.query.max_results || 100;
+    
+    if (!bearerToken) {
+      return res.status(401).json({ error: 'No authorization token provided' });
+    }
+
+    const url = `https://api.twitter.com/2/lists/${listId}/tweets?max_results=${maxResults}&tweet.fields=created_at,author_id,public_metrics&expansions=author_id&user.fields=username,name`;
+
+    const response = await fetch(url, {
+      headers: {
+        'Authorization': bearerToken
       }
-      section {
-        border-radius: 1em;
-        padding: 1em;
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        margin-right: -50%;
-        transform: translate(-50%, -50%);
-      }
-    </style>
-  </head>
-  <body>
-    <section>
-      Hello from Render!
-    </section>
-  </body>
-</html>
-`
+    });
+
+    const data = await response.json();
+    
+    if (!response.ok) {
+      return res.status(response.status).json(data);
+    }
+
+    res.json(data);
+  } catch (error) {
+    console.error('Error in /api/list/tweets:', error);
+    res.status(500).json({ error: 'Internal server error', details: error.message });
+  }
+});
+
+app.listen(PORT, () => {
+  console.log(`Twitter API Proxy Server running on port ${PORT}`);
+});
